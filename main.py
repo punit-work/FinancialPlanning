@@ -2,8 +2,6 @@ import pandas as pd
 import numpy as np
 from dateutil.relativedelta import relativedelta
 
-import input
-
 def calculate_goal_cashflows(input_df, end_date, goal_value_post_tax, instrument_params, input_variables):
 
     current_date = input_variables['current_date']
