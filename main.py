@@ -567,7 +567,11 @@ def run_simulation(input_variables, instrument_params):
                     'final_trans_df': final_trans_df,
                     'goal_dfs': goal_dfs,
                     'success_metrics': success_metrics,
-                    'last_goal_date': last_goal_date
+                    'last_goal_date': last_goal_date,
+                    'nav_df': nav_df,
+                    'sip_df': sip_df,
+                    'sip_trans_df': sip_trans_df,
+                    'withdrawls_df': withdrawls_df
                 }
             }
     return None
