@@ -481,6 +481,13 @@ def calculate_daily_value(final_trans_df, nav_df):
 
     return units_df
 
+def get_default_glide_paths():
+    return {
+        'Non-Negotiable': pd.read_excel('Glide Paths.xlsx', sheet_name='Non-Negotiable'),
+        'Semi-Negotiable': pd.read_excel('Glide Paths.xlsx', sheet_name='Semi-Negotiable'),
+        'Negotiable': pd.read_excel('Glide Paths.xlsx', sheet_name='Negotiable')
+    }
+
 def format_inr(amount):
     amount = round(float(amount), 2)
     integer, decimal = f"{amount:.2f}".split(".")
@@ -494,15 +501,12 @@ def format_inr(amount):
     return f"₹{integer}.{decimal}"
 
 
-def run_simulation(input_variables, instrument_params):
+def run_simulation(input_variables, instrument_params, glide_paths=None):
 
     if not input_variables == None:
 
-        glide_paths = {
-            'Non-Negotiable': pd.read_excel('Glide Paths.xlsx', sheet_name='Non-Negotiable'),
-            'Semi-Negotiable': pd.read_excel('Glide Paths.xlsx', sheet_name='Semi-Negotiable'),
-            'Negotiable': pd.read_excel('Glide Paths.xlsx', sheet_name='Negotiable')
-        }
+        if glide_paths is None:
+            glide_paths = get_default_glide_paths()
 
 
         goal_dfs = {}
