@@ -542,15 +542,15 @@ def run_simulation(input_variables, instrument_params):
 
         daily_corpus_value_df = calculate_daily_value(final_trans_df, nav_df)
 
-        nav_df.to_excel('test/nav_df.xlsx', index=False)
-        sip_df.to_excel('test/sip_df.xlsx', index=False)
-        sip_trans_df.to_excel('test/sip_trans_df.xlsx', index=False)
-        withdrawls_df.to_excel('test/withdrawls_df.xlsx', index=False)
-        final_trans_df.to_excel('test/final_trans_df.xlsx', index=False)
-        daily_corpus_value_df.to_excel('test/daily_corpus_value_df.xlsx', index=False)
+        # nav_df.to_excel('test/nav_df.xlsx', index=False)
+        # sip_df.to_excel('test/sip_df.xlsx', index=False)
+        # sip_trans_df.to_excel('test/sip_trans_df.xlsx', index=False)
+        # withdrawls_df.to_excel('test/withdrawls_df.xlsx', index=False)
+        # final_trans_df.to_excel('test/final_trans_df.xlsx', index=False)
+        # daily_corpus_value_df.to_excel('test/daily_corpus_value_df.xlsx', index=False)
 
-        for name, df in goal_dfs.items():
-            df.to_excel(f'test/{name}_goal_df.xlsx', index=False)
+        # for name, df in goal_dfs.items():
+        #     df.to_excel(f'test/{name}_goal_df.xlsx', index=False)
 
         if sip_df['net sip amount'].min() < 0:
             return {
