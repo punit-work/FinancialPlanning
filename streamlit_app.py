@@ -581,25 +581,26 @@ def main():
     # Section 4: Instrument Parameters
     st.header("⚙️ Instrument Parameters")
 
-    col1, col2 = st.columns(2)
+    with st.expander("Configure Instrument Returns and Taxes", expanded=False):
+        col1, col2 = st.columns(2)
 
-    with col1:
-        st.subheader("Hybrid")
-        hybrid_return = st.number_input("Return (%)", value=10.0, step=0.1, key="hybrid_return")
-        hybrid_tax = st.number_input("Tax (%)", value=12.5, step=0.1, key="hybrid_tax")
-        
-        st.subheader("Debt")
-        debt_return = st.number_input("Return (%)", value=6.0, step=0.1, key="debt_return")
-        debt_tax = st.number_input("Tax (%)", value=30.0, step=0.1, key="debt_tax")
+        with col1:
+            st.subheader("Hybrid")
+            hybrid_return = st.number_input("Return (%)", value=10.0, step=0.1, key="hybrid_return")
+            hybrid_tax = st.number_input("Tax (%)", value=12.5, step=0.1, key="hybrid_tax")
+            
+            st.subheader("Debt")
+            debt_return = st.number_input("Return (%)", value=6.0, step=0.1, key="debt_return")
+            debt_tax = st.number_input("Tax (%)", value=30.0, step=0.1, key="debt_tax")
 
-    with col2:
-        st.subheader("Goal")
-        goal_return = st.number_input("Return (%)", value=0.0, step=0.1, key="goal_return")
-        goal_tax = st.number_input("Tax (%)", value=0.0, step=0.1, key="goal_tax")
-        
-        st.subheader("Core Corpus")
-        core_return = st.number_input("Return (%)", value=15.0, step=0.1, key="core_return")
-        core_tax = st.number_input("Tax (%)", value=12.5, step=0.1, key="core_tax")
+        with col2:
+            st.subheader("Core Corpus")
+            core_return = st.number_input("Return (%)", value=15.0, step=0.1, key="core_return")
+            core_tax = st.number_input("Tax (%)", value=12.5, step=0.1, key="core_tax")
+    
+    # Goal return and tax are always 0 (not shown to user)
+    goal_return = 0.0
+    goal_tax = 0.0
 
     st.divider()
 
