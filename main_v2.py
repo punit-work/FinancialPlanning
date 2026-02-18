@@ -787,7 +787,10 @@ def run_simulation(config, retirement_date, instrument_params, glide_paths=None)
 
     # 2. Setup Date Ranges
     # Simulation runs until death_date (target_lifetime age). Goals are validated to be before death_date.
-    final_date = max(last_goal_date, death_date)
+    # Pools are pre-funded 5 years beyond death_date as a conservative buffer — prevents the
+    # "corpus uptick" near end-of-life and leaves residual pool value as an estate buffer.
+    buffer_date = death_date + pd.DateOffset(years=5)
+    final_date = max(last_goal_date, buffer_date)
     
     # 3. Generate NAV for Core Corpus (extended to 150 years)
     nav_df = generate_pseudo_nav(current_date, final_date, instrument_params['core_corpus']['return'])

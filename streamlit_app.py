@@ -713,13 +713,25 @@ def main():
                     st.dataframe(daily_value_df)
 
                 # Corpus remaining at target lifetime
-                st.subheader(f"Corpus at Age {int(target_lifetime)}")
+                st.subheader(f"Wealth at Age {int(target_lifetime)}")
                 death_data = comprehensive_df[pd.to_datetime(comprehensive_df['Date']) <= death_date]
                 if not death_data.empty:
-                    death_core_val = death_data.iloc[-1].get('Core Corpus Value', 0)
-                    st.metric(f"Remaining Core Corpus at Age {int(target_lifetime)}", logic.format_inr(death_core_val))
-                    if death_core_val > 1000:
-                        st.info("You have corpus remaining at your target lifetime — this is your estate/legacy corpus.")
+                    death_row = death_data.iloc[-1]
+                    death_core_val = death_row.get('Core Corpus Value', 0)
+                    death_debt_val = death_row.get('Expense Debt Pool Value', 0)
+                    death_hybrid_val = death_row.get('Expense Hybrid Pool Value', 0)
+                    death_pool_total = death_debt_val + death_hybrid_val
+                    death_total = death_core_val + death_pool_total
+
+                    d1, d2, d3, d4 = st.columns(4)
+                    d1.metric(f"Core Corpus", logic.format_inr(death_core_val))
+                    d2.metric("Debt Pool Buffer", logic.format_inr(death_debt_val))
+                    d3.metric("Hybrid Pool Buffer", logic.format_inr(death_hybrid_val))
+                    d4.metric("Total Estate", logic.format_inr(death_total))
+                    st.caption(
+                        "The Debt and Hybrid pool buffers represent expenses pre-funded "
+                        "5 years beyond your target lifetime — a conservative safety reserve."
+                    )
 
                 st.subheader("Goals Status")
                 for goal in input_variables['goals']:
