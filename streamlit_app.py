@@ -693,24 +693,16 @@ def main():
                     st.metric("💎 Total Wealth at Retirement", logic.format_inr(total_wealth))
                     st.divider()
             
-                # Logic to generate daily value for chart
-                # run_simulation returns (success, final_trans_df)
-                # We need daily values. logic.run_simulation doesn't return full dict anymore in main_v2? 
-                
-                # 1. Generate NAV - cap at death_date for consistent display
-                nav_df = logic.generate_pseudo_nav(input_variables['current_date'], death_date, instrument_params['core_corpus']['return'])
+                # Total Wealth Chart (Core Corpus + Expense Pools + Goal Pools)
+                wealth_df = comprehensive_df[comprehensive_df['Date'] <= death_date].copy()
+                value_cols = [c for c in wealth_df.columns if c.endswith('Value')]
+                wealth_df['Total Wealth'] = wealth_df[value_cols].sum(axis=1)
 
-                # 2. Daily Value
-                daily_value_df = logic.calculate_daily_value(final_trans_df, nav_df)
+                st.subheader(f"Projected Total Wealth (Until Age {int(target_lifetime)})")
+                st.line_chart(wealth_df, x='Date', y='Total Wealth')
 
-                # 3. Cap the chart data at death_date to avoid misleading uptick after expenses stop
-                daily_value_df = daily_value_df[daily_value_df['Date'] <= death_date]
-
-                st.subheader(f"Projected Core Corpus (Until Age {int(target_lifetime)})")
-                st.line_chart(daily_value_df, x='Date', y='current_value')
-
-                with st.expander("Show Daily Core Corpus Data"):
-                    st.dataframe(daily_value_df)
+                with st.expander("Show Total Wealth Breakdown"):
+                    st.dataframe(wealth_df[['Date', 'Total Wealth'] + value_cols])
 
                 # Corpus remaining at target lifetime
                 st.subheader(f"Wealth at Age {int(target_lifetime)}")
@@ -729,8 +721,8 @@ def main():
                     d3.metric("Hybrid Pool Buffer", logic.format_inr(death_hybrid_val))
                     d4.metric("Total Estate", logic.format_inr(death_total))
                     st.caption(
-                        "The Debt and Hybrid pool buffers represent expenses pre-funded "
-                        "5 years beyond your target lifetime — a conservative safety reserve."
+                        "Any residual Debt and Hybrid pool values represent the last partial "
+                        "funding cycle not yet paid out — this is the estate remainder."
                     )
 
                 st.subheader("Goals Status")

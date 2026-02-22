@@ -786,11 +786,8 @@ def run_simulation(config, retirement_date, instrument_params, glide_paths=None)
         goal_dfs[goal['name']] = goal_df
 
     # 2. Setup Date Ranges
-    # Simulation runs until death_date (target_lifetime age). Goals are validated to be before death_date.
-    # Pools are pre-funded 5 years beyond death_date as a conservative buffer — prevents the
-    # "corpus uptick" near end-of-life and leaves residual pool value as an estate buffer.
-    buffer_date = death_date + pd.DateOffset(years=5)
-    final_date = max(last_goal_date, buffer_date)
+    # Simulation runs until death_date. Expenses and pools are funded exactly to death_date.
+    final_date = max(last_goal_date, death_date)
     
     # 3. Generate NAV for Core Corpus (extended to 150 years)
     nav_df = generate_pseudo_nav(current_date, final_date, instrument_params['core_corpus']['return'])
@@ -860,13 +857,18 @@ def run_simulation(config, retirement_date, instrument_params, glide_paths=None)
 
 def generate_comprehensive_view(config, final_trans_df, pool_trans_df, goal_dfs, nav_df, debt_nav_df, hybrid_nav_df, sip_df, expense_df):
     current_date = config['current_date']
+    target_lifetime = config.get('target_lifetime', 100)
+    current_age = config.get('current_age', 30)
+    death_date = pd.Timestamp(current_date + pd.DateOffset(years=int(target_lifetime - current_age)))
+
     end_date = final_trans_df['Date'].max()
     if pool_trans_df is not None and not pool_trans_df.empty:
         end_date = max(end_date, pool_trans_df['Date'].max())
-    
-    # Generate Month-End dates
-    # Ensure they encompass the full range
-    full_date_range = pd.date_range(start=current_date, end=end_date, freq='ME') 
+    # Always extend at least to death_date so the chart reaches the full target lifetime
+    end_date = max(end_date, death_date)
+
+    # Generate Month-End dates up to end_date
+    full_date_range = pd.date_range(start=current_date, end=end_date, freq='ME')
     # 'M' is deprecated for Month End in recent pandas, 'ME' is better, or just use 'M' if on older. 
     # Let's use 'M' to be safe or 'D' and filter? 'M' is month end.
     
