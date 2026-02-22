@@ -120,7 +120,7 @@ def main():
     st.divider()
     
     # New Section: Expense Streams
-    st.header("💸 Living Expenses & Streams")
+    st.header("💸 Living Expenses")
     st.caption("Define multiple streams of expenses (e.g., Household, Travel, Medical) with their own inflation and adjustments.")
     
     if st.button("➕ Add Expense Stream"):
@@ -139,15 +139,8 @@ def main():
     
     streams_to_remove = []
     
-    def freq_label(f):
-        if f == 1: return "Monthly"
-        if f == 3: return "Quarterly"
-        if f == 6: return "Semi-Annually"
-        if f == 12: return "Yearly"
-        return f"Every {f} Months"
-    
     for i, stream in enumerate(st.session_state.expense_streams):
-        with st.expander(f"{stream['name']} ({logic.format_inr(stream['amount'])} - {freq_label(stream['frequency'])})", expanded=False):
+        with st.expander(f"Stream {i+1}", expanded=False):
             
             # Row 1: Basic Config
             c1, c2, c3 = st.columns(3)
