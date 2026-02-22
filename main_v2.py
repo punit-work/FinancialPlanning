@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 from dateutil.relativedelta import relativedelta
@@ -434,25 +435,7 @@ def calculate_sip_cashflows(input_variables, last_goal_date, retirement_date):
 def calculate_expenses_cashflows(input_variables, retirement_date, simulation_end_date=None):
     current_date = input_variables['current_date']
 
-    # Normalize input to list of streams
     streams = input_variables.get('expense_streams', [])
-    if not streams:
-        # Backward compatibility / Legacy Mode
-        expenses_config = input_variables.get('expenses', {})
-        if expenses_config:
-            streams.append({
-                'name': 'Living Expenses',
-                'amount': expenses_config.get('current_monthly_expenses', 0),
-                'frequency': 1,
-                'inflation': expenses_config.get('inflation_%', 0),
-                'post_retirement_change': expenses_config.get('%_change_after_retirement', 0),
-                'adjustments': input_variables.get('expense_adjustments', [])
-            })
-
-    # Global effects (legacy 'effects_on_expenses') - apply to total or first stream? 
-    # Usually these are fixed amounts (e.g. medical). We can handle them as a separate stream or post-process.
-    # Let's handle them as post-process on the aggregated DF.
-    global_effects = input_variables.get('effects_on_expenses', [])
 
     # Use provided end date or default to 100 years from current date
     if simulation_end_date is None:
@@ -529,21 +512,8 @@ def calculate_expenses_cashflows(input_variables, retirement_date, simulation_en
         master_df['Expense Amount'] += master_df['Amount']
         master_df = master_df.drop(columns=['Amount'])
         
-    master_df['adjustment amount'] = 0.0
-    
-    # Apply Global Fixed Amount Effects (Additive)
-    for effect in global_effects:
-        start_date = pd.Timestamp(effect['start_date'])
-        end_date = pd.Timestamp(effect['end_date'])
-        amount = effect['monthly_amount']
-        
-        mask = (master_df['Date'] >= start_date) & (master_df['Date'] <= end_date)
-        master_df.loc[mask, 'adjustment amount'] += amount
-        
-    master_df['Net Expense Amount'] = master_df['Expense Amount'] + master_df['adjustment amount']
-    # Ensure no negative expenses
-    master_df['Net Expense Amount'] = master_df['Net Expense Amount'].apply(lambda x: max(0, x))
-    
+    master_df['Net Expense Amount'] = master_df['Expense Amount'].apply(lambda x: max(0, x))
+
     return master_df
 
 def get_withdrawl_df(goal_dfs):
@@ -709,10 +679,11 @@ def add_withdrawls_to_trans(sip_trans_df, withdrawls_df, nav_df, instrument_para
     return trans_df, success, failure_details
 
 def get_default_glide_paths():
+    excel_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'Glide Paths.xlsx')
     return {
-        'Non-Negotiable': pd.read_excel('Glide Paths.xlsx', sheet_name='Non-Negotiable'),
-        'Semi-Negotiable': pd.read_excel('Glide Paths.xlsx', sheet_name='Semi-Negotiable'),
-        'Negotiable': pd.read_excel('Glide Paths.xlsx', sheet_name='Negotiable')
+        'Non-Negotiable': pd.read_excel(excel_path, sheet_name='Non-Negotiable'),
+        'Semi-Negotiable': pd.read_excel(excel_path, sheet_name='Semi-Negotiable'),
+        'Negotiable': pd.read_excel(excel_path, sheet_name='Negotiable')
     }
 
 def calculate_daily_value(final_trans_df, nav_df):
@@ -818,7 +789,7 @@ def run_simulation(config, retirement_date, instrument_params, glide_paths=None)
     )
     
     if failure_date:
-        return False, pool_trans_df, {'date': failure_date, 'amount': 0, 'description': failure_reason}, pd.DataFrame(), {}
+        return False, pool_trans_df, {'date': failure_date, 'amount': 0, 'description': failure_reason}, expense_movements_df, {}, pd.DataFrame()
 
     # 7. Prepare Master Withdrawal List for Core Corpus
     # Goals
@@ -1195,18 +1166,6 @@ def simulate_post_retirement(expense_df, debt_nav_df, hybrid_nav_df, debt_params
 
 
 
-def can_retire(month, year, config, instrument_params):
-    retirement_date = pd.Timestamp(year=year, month=month, day=1)
-    
-    # We load glide paths once to avoid reading excel every time if possible, 
-    # but for simplicity in this function call we can reload or pass them.
-    # To optimize, we should load glide paths outside loop.
-    # Assuming standard glide paths for now.
-    
-    success, _, _, _, _, _ = run_simulation(config, retirement_date, instrument_params)
-
-    return success
-
 def find_retirement_date(config, instrument_params=None, glide_paths=None):
     current_date = config['current_date']
     target_lifetime = config.get('target_lifetime', 100)
@@ -1263,33 +1222,33 @@ def main():
     config = {
         "current_date": pd.Timestamp("2026-01-09 00:00:00"),
         "current_age": 30,
+        "target_lifetime": 100,
         "current_corpus": 10000000,
         "current_sip": 100000,
         "yearly_sip_step_up_%": 10.0,
-        "stepup_date_month": 1,
-        "stepup_date_day": 5,
-
+        "stepup_date_month": None,
+        "stepup_date_day": None,
         "sip_adjustments": [],
-        "expense_adjustments": [],
-
+        "expense_streams": [
+            {
+                "name": "Living Expenses",
+                "amount": 50000,
+                "frequency": 1,
+                "inflation": 6.0,
+                "post_retirement_change": -15.0,
+                "adjustments": []
+            }
+        ],
         "goals": [
             {
                 "name": "Retirement Home",
-                "type": "Non-Negotiable", # Using valid sheet name
+                "type": "Non-Negotiable",
                 "maturity_date": pd.Timestamp("2040-01-01 00:00:00"),
                 "downpayment_present_value": 5000000,
                 "rate_for_future_value%": 6.0
             }
         ],
-
-        "effects_on_cashflows": [],
-        "effects_on_expenses": [],
-
-        "expenses": {
-            'current_monthly_expenses': 50000,
-            'inflation_%': 6.0,
-            '%_change_after_retirement': -15.0 
-        }
+        "effects_on_cashflows": []
     }
 
     print("Finding Retirement Date...")
