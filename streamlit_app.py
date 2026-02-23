@@ -632,19 +632,19 @@ def main():
         with col1:
             st.subheader("Hybrid")
             hybrid_return = st.number_input("Return (%)", value=12.0, step=0.1, key="hybrid_return")
-            hybrid_tax = st.number_input("Tax (%)", value=12.5, step=0.1, key="hybrid_tax")
-            
+            hybrid_stcg_tax = st.number_input("STCG Tax ≤12m (%)", value=20.0, step=0.1, key="hybrid_stcg_tax")
+            hybrid_ltcg_tax = st.number_input("LTCG Tax >12m (%)", value=12.5, step=0.1, key="hybrid_ltcg_tax")
+
             st.subheader("Debt")
             debt_return = st.number_input("Return (%)", value=6.0, step=0.1, key="debt_return")
-            debt_tax = st.number_input("Tax (%)", value=30.0, step=0.1, key="debt_tax")
+            debt_stcg_tax = st.number_input("STCG Tax ≤12m (%)", value=20.0, step=0.1, key="debt_stcg_tax")
+            debt_ltcg_tax = st.number_input("LTCG Tax >12m (%)", value=12.5, step=0.1, key="debt_ltcg_tax")
 
         with col2:
             st.subheader("Core Corpus")
             core_return = st.number_input("Return (%)", value=12.0, step=0.1, key="core_return")
-            core_tax = st.number_input("Tax (%)", value=12.5, step=0.1, key="core_tax")
-    
-    goal_return = 0.0
-    goal_tax = 0.0
+            core_stcg_tax = st.number_input("STCG Tax ≤12m (%)", value=20.0, step=0.1, key="core_stcg_tax")
+            core_ltcg_tax = st.number_input("LTCG Tax >12m (%)", value=12.5, step=0.1, key="core_ltcg_tax")
 
     st.divider()
 
@@ -735,10 +735,10 @@ def main():
         }
         
         instrument_params = {
-            'hybrid': {'return': hybrid_return / 100, 'tax': hybrid_tax / 100},
-            'debt': {'return': debt_return / 100, 'tax': debt_tax / 100},
-            'goal': {'return': goal_return / 100, 'tax': goal_tax / 100},
-            'core_corpus': {'return': core_return / 100, 'tax': core_tax / 100}
+            'hybrid': {'return': hybrid_return / 100, 'stcg_tax': hybrid_stcg_tax / 100, 'ltcg_tax': hybrid_ltcg_tax / 100},
+            'debt': {'return': debt_return / 100, 'stcg_tax': debt_stcg_tax / 100, 'ltcg_tax': debt_ltcg_tax / 100},
+            'goal': {'return': 0.0, 'stcg_tax': 0.0, 'ltcg_tax': 0.0},
+            'core_corpus': {'return': core_return / 100, 'stcg_tax': core_stcg_tax / 100, 'ltcg_tax': core_ltcg_tax / 100}
         }
         
         all_glide_paths = st.session_state.standard_glide_paths.copy()

@@ -16,10 +16,15 @@ class TaxLot:
         return self.units * current_nav
 
 class InvestmentPool:
-    def __init__(self, name, tax_rate):
+    def __init__(self, name, stcg_tax, ltcg_tax):
         self.name = name
-        self.tax_rate = tax_rate
+        self.stcg_tax = stcg_tax
+        self.ltcg_tax = ltcg_tax
         self.lots = [] # List of TaxLot objects
+
+    def _get_tax_rate(self, lot_date, redemption_date):
+        holding_days = (pd.Timestamp(redemption_date) - pd.Timestamp(lot_date)).days
+        return self.stcg_tax if holding_days <= 365 else self.ltcg_tax
 
     def invest(self, date, amount, nav, description="Investment"):
         if amount <= 0: return None
@@ -35,12 +40,13 @@ class InvestmentPool:
     def get_market_value(self, nav):
         return sum(lot.units for lot in self.lots) * nav
 
-    def get_unrealized_tax(self, nav):
+    def get_unrealized_tax(self, nav, as_of_date=None):
         total_tax = 0
         for lot in self.lots:
             gain_per_unit = nav - lot.purchase_price
             if gain_per_unit > 0:
-                total_tax += gain_per_unit * lot.units * self.tax_rate
+                rate = self._get_tax_rate(lot.date, as_of_date) if as_of_date is not None else self.ltcg_tax
+                total_tax += gain_per_unit * lot.units * rate
         return total_tax
 
     def redeem_net_amount(self, date, target_net, nav, description="Withdrawal"):
@@ -64,8 +70,7 @@ class InvestmentPool:
             # Max we can get from this lot
             curr_val = lot.current_value(nav)
             gain_per_unit = nav - lot.purchase_price
-            # Tax per unit = gain_per_unit * tax_rate (if gain > 0)
-            tax_per_unit = max(0, gain_per_unit * self.tax_rate)
+            tax_per_unit = max(0, gain_per_unit * self._get_tax_rate(lot.date, date))
             net_per_unit = nav - tax_per_unit
             
             # Check if this lot covers the remainder
@@ -137,23 +142,23 @@ class InvestmentPool:
                 units_to_sell = lot.units
                 gross_amt = curr_val
                 gain = gross_amt - lot.purchase_val
-                tax = max(0, gain * self.tax_rate)
-                
+                tax = max(0, gain * self._get_tax_rate(lot.date, date))
+
                 needed_gross -= gross_amt
                 total_gross_withdrawn += gross_amt
                 total_tax += tax
                 total_units += units_to_sell
                 lots_to_remove.append(i)
-                
+
             else:
                 # Partial lot
                 fraction = needed_gross / curr_val
                 units_to_sell = lot.units * fraction
                 gross_amt = needed_gross
-                
+
                 purchase_cost_for_part = lot.purchase_val * fraction
                 gain = gross_amt - purchase_cost_for_part
-                tax = max(0, gain * self.tax_rate)
+                tax = max(0, gain * self._get_tax_rate(lot.date, date))
                 
                 needed_gross = 0
                 total_gross_withdrawn += gross_amt
@@ -312,11 +317,12 @@ def calculate_goal_cashflows(input_df, end_date, goal_value_post_tax, instrument
             years = (outflow_date - inflow_date).days / 365.25
             
             place = source_row['place'].lower()
-            params = instrument_params.get(place, {'return': 0.0, 'tax': 0.0})
-            
+            params = instrument_params.get(place, {'return': 0.0, 'stcg_tax': 0.0, 'ltcg_tax': 0.0})
+            tax_rate = params['stcg_tax'] if years <= 1 else params['ltcg_tax']
+
             target_for_source = df.at[current_idx, 'inflow_amount']
             required_inflow = calculate_required_inflow(
-                target_for_source, params['return'], params['tax'], years
+                target_for_source, params['return'], tax_rate, years
             )
             
             df.at[source_idx, 'inflow_amount'] = required_inflow
@@ -337,14 +343,15 @@ def calculate_goal_cashflows(input_df, end_date, goal_value_post_tax, instrument
             continue
         
         place = row['place'].lower()
-        params = instrument_params.get(place, {'return': 0.0, 'tax': 0.0})
-        
+        params = instrument_params.get(place, {'return': 0.0, 'stcg_tax': 0.0, 'ltcg_tax': 0.0})
+
         if pd.notna(row['outflow_date']):
             years = (row['outflow_date'] - row['inflow_date']).days / 365.25
             principal = row['inflow_amount']
             total_outflow = principal * ((1 + params['return']) ** years)
             gains = total_outflow - principal
-            tax = gains * params['tax']
+            tax_rate = params['stcg_tax'] if years <= 1 else params['ltcg_tax']
+            tax = gains * tax_rate
             
             df.at[idx, 'total_outflow_amount'] = round(total_outflow, 2)
             df.at[idx, 'tax_out_of_outflow'] = round(tax, 2)
@@ -638,9 +645,15 @@ def add_withdrawls_to_trans(sip_trans_df, withdrawls_df, nav_df, instrument_para
              continue
              
         # Calculate Taxes and Liquidation
+        cc_stcg = instrument_params['core_corpus']['stcg_tax']
+        cc_ltcg = instrument_params['core_corpus']['ltcg_tax']
         available_trans_df['current_value'] = available_trans_df['units'] * current_nav
         available_trans_df['gains'] = available_trans_df['current_value'] - available_trans_df['Amount']
-        available_trans_df['tax'] = available_trans_df['gains'] * instrument_params['core_corpus']['tax']
+        available_trans_df['holding_days'] = (date - available_trans_df['Date']).dt.days
+        available_trans_df['applicable_tax_rate'] = available_trans_df['holding_days'].apply(
+            lambda d: cc_stcg if d <= 365 else cc_ltcg
+        )
+        available_trans_df['tax'] = available_trans_df['gains'] * available_trans_df['applicable_tax_rate']
         available_trans_df['post_tax_current_value'] = available_trans_df['current_value'] - available_trans_df['tax']
         
         remaining_amount = amount
@@ -1055,27 +1068,29 @@ def generate_comprehensive_view(config, final_trans_df, pool_trans_df, goal_dfs,
 def calculate_debt_injection_need(expenses_list, injection_date, pool_params):
     # expenses_list: list of (date, amount)
     # Returns PV needed at injection_date to meet these expenses
-    
+
     total_pv = 0
     rate = pool_params['return']
-    tax_rate = pool_params['tax']
-    
+    stcg_tax = pool_params['stcg_tax']
+    ltcg_tax = pool_params['ltcg_tax']
+
     for date, amount in expenses_list:
         if date < injection_date: continue
         years_to_expense = (date - injection_date).days / 365.25
         # Prevent negative years
         years_to_expense = max(0, years_to_expense)
-        
+
+        tax_rate = stcg_tax if years_to_expense <= 1 else ltcg_tax
         needed = calculate_corpus_required_for_future_expense(amount, years_to_expense, rate, tax_rate)
         total_pv += needed
-        
+
     return total_pv
 
 def simulate_post_retirement(expense_df, debt_nav_df, hybrid_nav_df, debt_params, hybrid_params, retirement_date, final_date, income_df=None):
     # Returns: pool_trans_df, core_replenishments_df, post_ret_inflows_df, failure_date, failure_reason, expense_movements_df
 
-    debt_pool = InvestmentPool('Debt', debt_params['tax'])
-    hybrid_pool = InvestmentPool('Hybrid', hybrid_params['tax'])
+    debt_pool = InvestmentPool('Debt', debt_params['stcg_tax'], debt_params['ltcg_tax'])
+    hybrid_pool = InvestmentPool('Hybrid', hybrid_params['stcg_tax'], hybrid_params['ltcg_tax'])
 
     pool_transactions = []
     core_replenishments = []
@@ -1152,16 +1167,16 @@ def simulate_post_retirement(expense_df, debt_nav_df, hybrid_nav_df, debt_params
         # --- B. Execute Transfers ---
         # 1. Check Hybrid Surplus/Shortfall
         current_hybrid_val = hybrid_pool.get_market_value(hybrid_nav)
-        hybrid_latent_tax = hybrid_pool.get_unrealized_tax(hybrid_nav)
+        hybrid_latent_tax = hybrid_pool.get_unrealized_tax(hybrid_nav, sim_date)
         # Adjusted Target = Target(Fresh) + Latent Tax
         # Shortfall = (Target + Tax) - CurrentVal
         # Surplus = CurrentVal - (Target + Tax)
         hybrid_shortfall = max(0, (target_hybrid_val + hybrid_latent_tax) - current_hybrid_val)
         hybrid_surplus = max(0, current_hybrid_val - (target_hybrid_val + hybrid_latent_tax))
-        
+
         # 2. Check Debt Shortfall
         current_debt_val = debt_pool.get_market_value(debt_nav)
-        debt_latent_tax = debt_pool.get_unrealized_tax(debt_nav)
+        debt_latent_tax = debt_pool.get_unrealized_tax(debt_nav, sim_date)
         debt_shortfall = max(0, (target_debt_val + debt_latent_tax) - current_debt_val)
         
         # 3. Hybrid -> Debt (Surplus only)
@@ -1185,7 +1200,7 @@ def simulate_post_retirement(expense_df, debt_nav_df, hybrid_nav_df, debt_params
             
             # Recalculate Debt Shortfall
             current_debt_val = debt_pool.get_market_value(debt_nav)
-            debt_latent_tax = debt_pool.get_unrealized_tax(debt_nav)
+            debt_latent_tax = debt_pool.get_unrealized_tax(debt_nav, sim_date)
             debt_shortfall = max(0, (target_debt_val + debt_latent_tax) - current_debt_val)
 
         # 4. Core -> Debt (Remaining Shortfall)
@@ -1201,7 +1216,7 @@ def simulate_post_retirement(expense_df, debt_nav_df, hybrid_nav_df, debt_params
 
         # 5. Core -> Hybrid (Refill to Target)
         current_hybrid_val = hybrid_pool.get_market_value(hybrid_nav)
-        hybrid_latent_tax = hybrid_pool.get_unrealized_tax(hybrid_nav)
+        hybrid_latent_tax = hybrid_pool.get_unrealized_tax(hybrid_nav, sim_date)
         hybrid_shortfall = max(0, (target_hybrid_val + hybrid_latent_tax) - current_hybrid_val)
         
         if hybrid_shortfall > 0.01:
@@ -1261,11 +1276,11 @@ def find_retirement_date(config, instrument_params=None, glide_paths=None):
 
     if instrument_params is None:
         instrument_params = {
-            'core_corpus': {'return': 0.12, 'tax': 0.10},
-            'equity': {'return': 0.12, 'tax': 0.10},
-            'debt': {'return': 0.08, 'tax': 0.20},
-            'hybrid': {'return': 0.12, 'tax': 0.15},
-            'cash': {'return': 0.04, 'tax': 0.30}
+            'core_corpus': {'return': 0.12, 'stcg_tax': 0.20, 'ltcg_tax': 0.125},
+            'equity': {'return': 0.12, 'stcg_tax': 0.20, 'ltcg_tax': 0.125},
+            'debt': {'return': 0.08, 'stcg_tax': 0.20, 'ltcg_tax': 0.125},
+            'hybrid': {'return': 0.12, 'stcg_tax': 0.20, 'ltcg_tax': 0.125},
+            'cash': {'return': 0.04, 'stcg_tax': 0.20, 'ltcg_tax': 0.125}
         }
 
     if glide_paths is None:
