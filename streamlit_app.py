@@ -388,6 +388,22 @@ def main():
     # Section 2.5: Financial Goals
     st.header("🎯 Financial Goals")
 
+    with st.container(border=True):
+        st.markdown("**🛡️ Emergency Corpus (Recommended)**")
+        st.caption(
+            "Before adding goals, ensure you have an emergency corpus invested in liquid/overnight funds. "
+            "Add it as a goal with today's date and present value = your target corpus."
+        )
+        st.markdown(
+            "| Employment Type | Recommended Cover |\n"
+            "|---|---|\n"
+            "| Salaried – stable job | 6 months |\n"
+            "| Salaried – high-risk / cyclical industry | 9 months |\n"
+            "| Self-employed / Business owner | 12 months |\n"
+            "| Retiree | 18 months |",
+            unsafe_allow_html=False
+        )
+
     col1, col2 = st.columns([3, 1])
     with col2:
         if st.button("➕ Add Goal", use_container_width=True):
