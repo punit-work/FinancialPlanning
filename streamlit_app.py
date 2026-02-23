@@ -235,7 +235,7 @@ def main():
             c1, c2, c3 = st.columns(3)
             with c1:
                 inc['name'] = st.text_input("Name", value=inc['name'], key=f"inc_name_{i}")
-                inc['amount'] = st.number_input("Monthly Amount (₹ today, post-tax)", value=int(inc['amount']), step=1000, key=f"inc_amt_{i}")
+                inc['amount'] = st.number_input("Monthly Amount (₹ today, post-tax)", value=max(0, int(inc['amount'])), min_value=0, step=1000, key=f"inc_amt_{i}")
             with c2:
                 inc['pre_retirement_growth'] = st.number_input("Growth before retirement (%/yr)", value=float(inc['pre_retirement_growth']), step=0.5, key=f"inc_pre_{i}")
                 inc['post_retirement_growth'] = st.number_input("Growth after retirement (%/yr)", value=float(inc['post_retirement_growth']), step=0.5, key=f"inc_post_{i}")
@@ -571,6 +571,43 @@ def main():
                         st.session_state.effects.pop(i)
                         st.rerun()
 
+    # Live warning: flag if any net SIP month goes negative given current effects + adjustments
+    if len(st.session_state.effects) > 0:
+        _live_config = {
+            'current_date': pd.Timestamp(current_date),
+            'current_sip': int(current_sip),
+            'yearly_sip_step_up_%': float(yearly_sip_step_up),
+            'stepup_date_month': stepup_month,
+            'stepup_date_day': stepup_day,
+            'sip_adjustments': [
+                {
+                    'start_date': pd.Timestamp(adj['start_date']),
+                    'end_date': pd.Timestamp(adj['end_date']),
+                    'percentage': float(adj['percentage'])
+                }
+                for adj in st.session_state.sip_adjustments
+            ],
+            'effects_on_cashflows': [
+                {
+                    'start_date': pd.Timestamp(e['start_date']),
+                    'end_date': pd.Timestamp(e['end_date']),
+                    'monthly_amount': int(e['monthly_amount']),
+                    'inflation_rate': float(e.get('inflation_rate', 0.0))
+                }
+                for e in st.session_state.effects
+            ]
+        }
+        _live_sip_df = logic.calculate_sip_cashflows(_live_config, death_date, death_date)
+        _neg = _live_sip_df[_live_sip_df['net sip amount'] < 0]
+        if not _neg.empty:
+            _worst = _neg.loc[_neg['net sip amount'].idxmin()]
+            st.warning(
+                f"⚠️ **Net SIP goes negative** in {len(_neg)} month(s) — "
+                f"{_neg['Date'].min().strftime('%b %Y')} to {_neg['Date'].max().strftime('%b %Y')}. "
+                f"Worst: {logic.format_inr(abs(_worst['net sip amount']))} shortfall in {_worst['Date'].strftime('%b %Y')}. "
+                f"During these months the corpus will be drawn down rather than invested."
+            )
+
     st.divider()
 
     # Section 4: Instrument Parameters
@@ -594,7 +631,7 @@ def main():
 
         with col1:
             st.subheader("Hybrid")
-            hybrid_return = st.number_input("Return (%)", value=10.0, step=0.1, key="hybrid_return")
+            hybrid_return = st.number_input("Return (%)", value=12.0, step=0.1, key="hybrid_return")
             hybrid_tax = st.number_input("Tax (%)", value=12.5, step=0.1, key="hybrid_tax")
             
             st.subheader("Debt")
@@ -706,6 +743,18 @@ def main():
         
         all_glide_paths = st.session_state.standard_glide_paths.copy()
         all_glide_paths.update(st.session_state.custom_glide_paths)
+
+        # Warn if net SIP goes negative in any month (using death_date as max cap)
+        _sip_check_df = logic.calculate_sip_cashflows(input_variables, death_date, death_date)
+        _neg_sip = _sip_check_df[_sip_check_df['net sip amount'] < 0]
+        if not _neg_sip.empty:
+            _w = _neg_sip.loc[_neg_sip['net sip amount'].idxmin()]
+            st.warning(
+                f"⚠️ **Net SIP is negative** in {len(_neg_sip)} month(s) "
+                f"({_neg_sip['Date'].min().strftime('%b %Y')} – {_neg_sip['Date'].max().strftime('%b %Y')}). "
+                f"Worst: {logic.format_inr(abs(_w['net sip amount']))} shortfall in {_w['Date'].strftime('%b %Y')}. "
+                f"During these months the corpus will be drawn down rather than invested. Simulation will still proceed."
+            )
 
         with st.spinner("Simulating... This may take a moment."):
             result = logic.find_retirement_date(input_variables, instrument_params, all_glide_paths)
