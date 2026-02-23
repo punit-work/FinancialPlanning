@@ -91,6 +91,9 @@ def main():
         st.session_state.standard_glide_paths = logic.get_default_glide_paths()
     if 'sip_adjustments' not in st.session_state:
         st.session_state.sip_adjustments = []
+    if 'passive_income_streams' not in st.session_state:
+        st.session_state.passive_income_streams = []
+
     if 'expense_streams' not in st.session_state:
         st.session_state.expense_streams = [{
             'name': 'Living Expenses',
@@ -204,7 +207,55 @@ def main():
 
     st.divider()
 
-    # Section 1.5: Advanced Options
+    # Section 1.5: Post-Retirement Passive Income
+    st.header("💵 Post-Retirement Passive Income")
+    st.caption(
+        "Regular post-tax income after retirement — pension, rent, dividends, etc. "
+        "Enter amounts in **today's rupees**: we grow them to your retirement date at the "
+        "pre-retirement rate, then continue at the post-retirement rate from there. "
+        "Each month, this income offsets your expenses; any surplus flows back into the core corpus."
+    )
+
+    if st.button("➕ Add Income Stream"):
+        st.session_state.passive_income_streams.append({
+            'name': f"Income {len(st.session_state.passive_income_streams) + 1}",
+            'amount': 20000,
+            'pre_retirement_growth': 5.0,
+            'post_retirement_growth': 5.0,
+            'end_date': None
+        })
+        st.rerun()
+
+    if len(st.session_state.passive_income_streams) == 0:
+        st.info("No passive income streams defined. Add one if you expect pension, rent, or similar income after retirement.")
+
+    income_to_remove = []
+    for i, inc in enumerate(st.session_state.passive_income_streams):
+        with st.expander(f"Stream {i+1}: {inc['name']}", expanded=True):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                inc['name'] = st.text_input("Name", value=inc['name'], key=f"inc_name_{i}")
+                inc['amount'] = st.number_input("Monthly Amount (₹ today, post-tax)", value=int(inc['amount']), step=1000, key=f"inc_amt_{i}")
+            with c2:
+                inc['pre_retirement_growth'] = st.number_input("Growth before retirement (%/yr)", value=float(inc['pre_retirement_growth']), step=0.5, key=f"inc_pre_{i}")
+                inc['post_retirement_growth'] = st.number_input("Growth after retirement (%/yr)", value=float(inc['post_retirement_growth']), step=0.5, key=f"inc_post_{i}")
+            with c3:
+                use_end = st.checkbox("Has end date?", value=inc['end_date'] is not None, key=f"inc_end_chk_{i}")
+                if use_end:
+                    inc['end_date'] = date_text_input("End Date", value=inc['end_date'] or date(2060, 1, 1), key=f"inc_end_{i}")
+                else:
+                    inc['end_date'] = None
+                    st.caption("Continues until end of plan.")
+                if st.button("🗑️ Delete", key=f"del_inc_{i}"):
+                    income_to_remove.append(i)
+
+    for idx in sorted(income_to_remove, reverse=True):
+        st.session_state.passive_income_streams.pop(idx)
+        st.rerun()
+
+    st.divider()
+
+    # Section 2: Advanced Options
     st.header("⚙️ Advanced Options")
     
     with st.expander("Advanced SIP Settings", expanded=False):
@@ -598,6 +649,17 @@ def main():
                 'adjustments': adjs
             })
 
+        # Prepare Passive Income Streams Data
+        mapped_income_streams = []
+        for s in st.session_state.passive_income_streams:
+            mapped_income_streams.append({
+                'name': s['name'],
+                'amount': int(s['amount']),
+                'pre_retirement_growth': float(s['pre_retirement_growth']),
+                'post_retirement_growth': float(s['post_retirement_growth']),
+                'end_date': pd.Timestamp(s['end_date']) if s['end_date'] is not None else None
+            })
+
         # Create input_variables dictionary
         input_variables = {
             'current_date': pd.Timestamp(current_date),
@@ -613,6 +675,7 @@ def main():
                 for adj in st.session_state.sip_adjustments
             ],
             'expense_streams': mapped_expense_streams,
+            'passive_income_streams': mapped_income_streams,
             'goals': [
                 {
                     'name': goal['name'],
@@ -771,7 +834,7 @@ def main():
                 st.dataframe(expense_movements_df)
                 
                 st.subheader("Comprehensive Month-by-Month View")
-                st.caption("Includes Core Corpus, Expense Pools, Goal Pools, Net SIP, and Net Expenses.")
+                st.caption("Includes Core Corpus, Expense Pools, Goal Pools, Net SIP, Net Expenses, and Passive Income.")
                 st.dataframe(comprehensive_df)
 
                 st.subheader("Goal Specific Details")

@@ -516,6 +516,51 @@ def calculate_expenses_cashflows(input_variables, retirement_date, simulation_en
 
     return master_df
 
+def calculate_passive_income_cashflows(config, retirement_date, simulation_end_date=None):
+    """
+    Generates a monthly passive income series starting from retirement_date.
+    Each stream's today's-rupee amount is grown to retirement at pre_retirement_growth,
+    then continues growing at post_retirement_growth from there onward.
+    """
+    current_date = config['current_date']
+    streams = config.get('passive_income_streams', [])
+    retirement_date = pd.Timestamp(retirement_date)
+
+    if simulation_end_date is None:
+        simulation_end_date = current_date + pd.DateOffset(years=100)
+
+    master_date_range = pd.date_range(start=retirement_date, end=simulation_end_date, freq='MS')
+    master_df = pd.DataFrame({'Date': master_date_range})
+    master_df['Passive Income Amount'] = 0.0
+
+    if not streams:
+        return master_df
+
+    years_to_retirement = (retirement_date - current_date).days / 365.25
+    years_post_ret = (master_df['Date'] - retirement_date).dt.days / 365.25
+
+    for stream in streams:
+        amount = stream.get('amount', 0)
+        pre_growth = stream.get('pre_retirement_growth', 0) / 100.0
+        post_growth = stream.get('post_retirement_growth', 0) / 100.0
+        end_date = stream.get('end_date', None)
+
+        # Grow from today to retirement at pre-retirement rate
+        amount_at_retirement = amount * ((1 + pre_growth) ** years_to_retirement)
+
+        # Grow post-retirement at post-retirement rate
+        stream_values = amount_at_retirement * ((1 + post_growth) ** years_post_ret)
+
+        # Zero out after end_date if specified
+        if end_date is not None:
+            end_ts = pd.Timestamp(end_date)
+            stream_values = stream_values.where(master_df['Date'] <= end_ts, 0.0)
+
+        master_df['Passive Income Amount'] += stream_values
+
+    return master_df
+
+
 def get_withdrawl_df(goal_dfs):
     results = []
     for name, df in goal_dfs.items():
@@ -769,6 +814,9 @@ def run_simulation(config, retirement_date, instrument_params, glide_paths=None)
     # 5. Calculate Expense Cashflows (extended to 150 years for pool calculations)
     expense_df = calculate_expenses_cashflows(config, retirement_date, final_date)
 
+    # 5a. Calculate Passive Income Cashflows (post-retirement only, grows from today's values)
+    passive_income_df = calculate_passive_income_cashflows(config, retirement_date, final_date)
+
     # 6. Simulate Post-Retirement Pools (Debt & Hybrid)
     # This will generate "Replenishment Withdrawals" from Core Corpus
     # We generate NAVs from current_date because goals might use these pools before retirement.
@@ -778,14 +826,15 @@ def run_simulation(config, retirement_date, instrument_params, glide_paths=None)
     # We need to filter expenses to those after retirement
     post_ret_expense_df = expense_df[expense_df['Date'] >= retirement_date].copy().reset_index(drop=True)
     
-    pool_trans_df, core_replenishments_df, failure_date, failure_reason, expense_movements_df = simulate_post_retirement(
+    pool_trans_df, core_replenishments_df, post_ret_inflows_df, failure_date, failure_reason, expense_movements_df = simulate_post_retirement(
         post_ret_expense_df,
         debt_nav_df,
         hybrid_nav_df,
         instrument_params['debt'],
         instrument_params['hybrid'],
         retirement_date,
-        final_date
+        final_date,
+        income_df=passive_income_df
     )
     
     if failure_date:
@@ -809,6 +858,22 @@ def run_simulation(config, retirement_date, instrument_params, glide_paths=None)
 
     # 8. Run Transaction Simulation for Core Corpus
     sip_trans_df = create_sip_trans(nav_df, sip_df, config, retirement_date)
+
+    # Add passive income surplus inflows back into core corpus
+    if post_ret_inflows_df is not None and not post_ret_inflows_df.empty:
+        inflow_rows = []
+        for _, inflow_row in post_ret_inflows_df.iterrows():
+            idate = inflow_row['Date']
+            iamount = inflow_row['Amount']
+            matches = nav_df[nav_df['Date'] <= idate]
+            inav = matches['nav'].iloc[-1] if not matches.empty else nav_df['nav'].iloc[0]
+            inflow_rows.append({
+                'Date': idate, 'Amount': iamount, 'NAV': inav,
+                'units': iamount / inav, 'Description': inflow_row['Description']
+            })
+        sip_trans_df = pd.concat([sip_trans_df, pd.DataFrame(inflow_rows)], ignore_index=True)
+        sip_trans_df = sip_trans_df.sort_values('Date').reset_index(drop=True)
+
     final_trans_df, success, failure_details = add_withdrawls_to_trans(sip_trans_df, all_withdrawals, nav_df, instrument_params)
     
     # Merge pool transactions for complete record?
@@ -819,14 +884,14 @@ def run_simulation(config, retirement_date, instrument_params, glide_paths=None)
     
     # 9. Generate Comprehensive View
     comprehensive_df = generate_comprehensive_view(
-        config, final_trans_df, pool_trans_df, goal_dfs, 
-        nav_df, debt_nav_df, hybrid_nav_df, 
-        sip_df, expense_df
+        config, final_trans_df, pool_trans_df, goal_dfs,
+        nav_df, debt_nav_df, hybrid_nav_df,
+        sip_df, expense_df, passive_income_df
     )
 
     return success, final_trans_df, failure_details, expense_movements_df, goal_dfs, comprehensive_df
 
-def generate_comprehensive_view(config, final_trans_df, pool_trans_df, goal_dfs, nav_df, debt_nav_df, hybrid_nav_df, sip_df, expense_df):
+def generate_comprehensive_view(config, final_trans_df, pool_trans_df, goal_dfs, nav_df, debt_nav_df, hybrid_nav_df, sip_df, expense_df, passive_income_df=None):
     current_date = config['current_date']
     target_lifetime = config.get('target_lifetime', 100)
     current_age = config.get('current_age', 30)
@@ -972,9 +1037,19 @@ def generate_comprehensive_view(config, final_trans_df, pool_trans_df, goal_dfs,
     master_df = master_df.merge(exp_agg, on='YearMonth', how='left').fillna({'Net Expense Amount': 0})
     master_df = master_df.rename(columns={'Net Expense Amount': 'Net Expenses'})
     
+    # Merge Passive Income
+    if passive_income_df is not None and not passive_income_df.empty:
+        income_agg = passive_income_df.copy()
+        income_agg['YearMonth'] = income_agg['Date'].dt.to_period('M')
+        income_agg = income_agg.groupby('YearMonth')['Passive Income Amount'].sum().reset_index()
+        master_df = master_df.merge(income_agg, on='YearMonth', how='left').fillna({'Passive Income Amount': 0})
+        master_df = master_df.rename(columns={'Passive Income Amount': 'Passive Income'})
+    else:
+        master_df['Passive Income'] = 0.0
+
     # Cleanup
     master_df = master_df.drop(columns=['YearMonth'])
-    
+
     return master_df
 
 def calculate_debt_injection_need(expenses_list, injection_date, pool_params):
@@ -996,15 +1071,23 @@ def calculate_debt_injection_need(expenses_list, injection_date, pool_params):
         
     return total_pv
 
-def simulate_post_retirement(expense_df, debt_nav_df, hybrid_nav_df, debt_params, hybrid_params, retirement_date, final_date):
-    # Returns: pool_trans_df, core_replenishments_df, failure_date, failure_reason, expense_movements_df
-    
+def simulate_post_retirement(expense_df, debt_nav_df, hybrid_nav_df, debt_params, hybrid_params, retirement_date, final_date, income_df=None):
+    # Returns: pool_trans_df, core_replenishments_df, post_ret_inflows_df, failure_date, failure_reason, expense_movements_df
+
     debt_pool = InvestmentPool('Debt', debt_params['tax'])
     hybrid_pool = InvestmentPool('Hybrid', hybrid_params['tax'])
-    
+
     pool_transactions = []
     core_replenishments = []
+    post_ret_inflows = []
     expense_movements = []
+
+    # Build monthly income lookup {(year, month): amount} for O(1) access
+    income_data_monthly = {}
+    if income_df is not None and not income_df.empty:
+        for _, row in income_df.iterrows():
+            key = (row['Date'].year, row['Date'].month)
+            income_data_monthly[key] = income_data_monthly.get(key, 0) + row['Passive Income Amount']
 
     # Create quick access to NAVs
     # Using asof merge later might be cleaner, but for loop lookups are ok if optimized
@@ -1052,20 +1135,19 @@ def simulate_post_retirement(expense_df, debt_nav_df, hybrid_nav_df, debt_params
         hybrid_nav = get_nav(sim_date, hybrid_nav_dict, hybrid_nav_df)
         
         # --- A. Determine Needs ---
-        # Debt Window: Next 24 months (Years 1 & 2 relative to now)
+        # Debt Window: Next 24 months — use net expenses (expense minus passive income)
         debt_deadline = sim_date + pd.DateOffset(months=24)
-        debt_expenses = [(d, a) for d, a in expense_data if sim_date <= d < debt_deadline]
-        
-        target_debt_val = calculate_debt_injection_need(debt_expenses, sim_date, debt_params)
-        
-        # Hybrid Window: Years 3, 4, 5 relative to now (Months 25 to 60)
-        # User Logic: Calculate PV assuming Hybrid pays these expenses directly.
+        debt_net_expenses = [(d, max(0, a - income_data_monthly.get((d.year, d.month), 0))) for d, a in expense_data if sim_date <= d < debt_deadline]
+
+        target_debt_val = calculate_debt_injection_need(debt_net_expenses, sim_date, debt_params)
+
+        # Hybrid Window: Months 25–60 — same net expense logic
         hybrid_window_start = sim_date + pd.DateOffset(months=24)
         hybrid_window_end = sim_date + pd.DateOffset(months=60)
-        
-        hybrid_expenses = [(d, a) for d, a in expense_data if hybrid_window_start <= d < hybrid_window_end]
-        
-        target_hybrid_val = calculate_debt_injection_need(hybrid_expenses, sim_date, hybrid_params)
+
+        hybrid_net_expenses = [(d, max(0, a - income_data_monthly.get((d.year, d.month), 0))) for d, a in expense_data if hybrid_window_start <= d < hybrid_window_end]
+
+        target_hybrid_val = calculate_debt_injection_need(hybrid_net_expenses, sim_date, hybrid_params)
 
         # --- B. Execute Transfers ---
         # 1. Check Hybrid Surplus/Shortfall
@@ -1146,23 +1228,28 @@ def simulate_post_retirement(expense_df, debt_nav_df, hybrid_nav_df, debt_params
                 continue
                 
             total_expense = sum(month_expenses)
-            curr_nav = get_nav(m_date, debt_nav_dict, debt_nav_df)
-            
-            wd_res = debt_pool.redeem_net_amount(m_date, total_expense, curr_nav, description="Monthly Expense")
-            pool_transactions.append(wd_res)
+            month_income = income_data_monthly.get((m_date.year, m_date.month), 0)
+            net_withdrawal = max(0, total_expense - month_income)
+            surplus = max(0, month_income - total_expense)
 
-            log_movement(m_date, debt_out=total_expense)
-
-            
-            if not wd_res['fully_funded']:
-                return pd.DataFrame(pool_transactions), pd.DataFrame(core_replenishments), m_date, "Debt Pool Depleted", pd.DataFrame(expense_movements)
+            if net_withdrawal > 0:
+                curr_nav = get_nav(m_date, debt_nav_dict, debt_nav_df)
+                wd_res = debt_pool.redeem_net_amount(m_date, net_withdrawal, curr_nav, description="Monthly Expense")
+                pool_transactions.append(wd_res)
+                log_movement(m_date, debt_out=net_withdrawal)
+                if not wd_res['fully_funded']:
+                    return pd.DataFrame(pool_transactions), pd.DataFrame(core_replenishments), pd.DataFrame(post_ret_inflows), m_date, "Debt Pool Depleted", pd.DataFrame(expense_movements)
+            else:
+                if surplus > 0:
+                    post_ret_inflows.append({'Date': m_date, 'Amount': surplus, 'Description': 'Passive Income Surplus'})
+                log_movement(m_date)
 
             
             m_date += relativedelta(months=1)
             
         sim_date = next_year
 
-    return pd.DataFrame(pool_transactions), pd.DataFrame(core_replenishments), None, None, pd.DataFrame(expense_movements)
+    return pd.DataFrame(pool_transactions), pd.DataFrame(core_replenishments), pd.DataFrame(post_ret_inflows), None, None, pd.DataFrame(expense_movements)
 
 
 
