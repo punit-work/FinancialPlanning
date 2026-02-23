@@ -391,7 +391,7 @@ def main():
     with st.container(border=True):
         st.markdown("**🛡️ Emergency Corpus (Recommended)**")
         st.caption(
-            "Before adding goals, ensure you have an emergency corpus invested in liquid/overnight funds. "
+            "Before adding goals, ensure you have added an emergency corpus. "
             "Add it as a goal with today's date and present value = your target corpus."
         )
         st.markdown(
@@ -524,6 +524,19 @@ def main():
 
     # Section 4: Instrument Parameters
     st.header("⚙️ Instrument Parameters")
+
+    with st.container(border=True):
+        st.markdown("**📈 Recommended Core Corpus Return by Risk Profile**")
+        st.markdown(
+            "| Risk Profile | Recommended Return |\n"
+            "|---|---|\n"
+            "| Very Conservative | 8% |\n"
+            "| Conservative | 10% |\n"
+            "| Balanced | 12% |\n"
+            "| Aggressive | 13.5% |\n"
+            "| Very Aggressive | 15% |",
+            unsafe_allow_html=False
+        )
 
     with st.expander("Configure Instrument Returns and Taxes", expanded=False):
         col1, col2 = st.columns(2)
