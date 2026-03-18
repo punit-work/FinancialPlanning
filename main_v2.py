@@ -789,7 +789,7 @@ def run_simulation(config, retirement_date, instrument_params, glide_paths=None)
         glide_paths = get_default_glide_paths()
 
     current_date = config['current_date']
-    target_lifetime = config.get('target_lifetime', 100)
+    target_lifetime = config.get('target_lifetime', 90)
     current_age = config.get('current_age', 30)
     death_date = pd.Timestamp(current_date + pd.DateOffset(years=int(target_lifetime - current_age)))
 
@@ -906,7 +906,7 @@ def run_simulation(config, retirement_date, instrument_params, glide_paths=None)
 
 def generate_comprehensive_view(config, final_trans_df, pool_trans_df, goal_dfs, nav_df, debt_nav_df, hybrid_nav_df, sip_df, expense_df, passive_income_df=None):
     current_date = config['current_date']
-    target_lifetime = config.get('target_lifetime', 100)
+    target_lifetime = config.get('target_lifetime', 90)
     current_age = config.get('current_age', 30)
     death_date = pd.Timestamp(current_date + pd.DateOffset(years=int(target_lifetime - current_age)))
 
@@ -1270,7 +1270,7 @@ def simulate_post_retirement(expense_df, debt_nav_df, hybrid_nav_df, debt_params
 
 def find_retirement_date(config, instrument_params=None, glide_paths=None):
     current_date = config['current_date']
-    target_lifetime = config.get('target_lifetime', 100)
+    target_lifetime = config.get('target_lifetime', 90)
     current_age = config.get('current_age', 30)
     death_date = pd.Timestamp(current_date + pd.DateOffset(years=int(target_lifetime - current_age)))
 
@@ -1324,7 +1324,7 @@ def main():
     config = {
         "current_date": pd.Timestamp("2026-01-09 00:00:00"),
         "current_age": 30,
-        "target_lifetime": 100,
+        "target_lifetime": 90,
         "current_corpus": 10000000,
         "current_sip": 100000,
         "yearly_sip_step_up_%": 10.0,

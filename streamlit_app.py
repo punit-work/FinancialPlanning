@@ -1,10 +1,10 @@
 import streamlit as st #type:ignore
-import pandas as pd
+import pandas as pd #type:ignore
 from datetime import datetime
 import main_v2 as logic
 # import io
 # import zipfile
-from dateutil.relativedelta import relativedelta
+from dateutil.relativedelta import relativedelta #type:ignore
 from datetime import date
 
 
@@ -115,7 +115,7 @@ def main():
 
     with col2:
         current_age = st.number_input("Current Age", value=30, step=1)
-        target_lifetime = st.number_input("Target Lifetime (Years)", value=100, min_value=int(current_age) + 1, step=1)
+        target_lifetime = st.number_input("Target Lifetime (Years)", value=90, min_value=int(current_age) + 1, step=1)
         current_sip = st.number_input("Current SIP (₹/month)", value=100000, step=1000)
 
     death_date = pd.Timestamp(current_date) + pd.DateOffset(years=int(target_lifetime - current_age))
