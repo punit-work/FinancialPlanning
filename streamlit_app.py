@@ -756,6 +756,17 @@ def main():
                 f"During these months the corpus will be drawn down rather than invested. Simulation will still proceed."
             )
 
+        with st.expander("View Input Configuration"):
+            def make_serializable(obj):
+                if isinstance(obj, (pd.Timestamp, date, datetime)):
+                    return obj.strftime('%Y-%m-%d')
+                if isinstance(obj, dict):
+                    return {k: make_serializable(v) for k, v in obj.items()}
+                if isinstance(obj, list):
+                    return [make_serializable(i) for i in obj]
+                return obj
+            st.json(make_serializable(input_variables))
+
         with st.spinner("Simulating... This may take a moment."):
             result = logic.find_retirement_date(input_variables, instrument_params, all_glide_paths)
             
@@ -944,17 +955,6 @@ def main():
                 else:
                      st.write("Corpus seems to survive with immediate retirement? This is unexpected if 'find_retirement_date' failed. It might be due to 100-year projection limit.")
 
-        st.divider()
-        with st.expander("View Input Configuration"):
-            def make_serializable(obj):
-                if isinstance(obj, (pd.Timestamp, date, datetime)):
-                    return obj.strftime('%Y-%m-%d')
-                if isinstance(obj, dict):
-                    return {k: make_serializable(v) for k, v in obj.items()}
-                if isinstance(obj, list):
-                    return [make_serializable(i) for i in obj]
-                return obj
-            st.json(make_serializable(input_variables))
 
 if __name__ == "__main__":
     main()

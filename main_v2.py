@@ -2,6 +2,23 @@ import os
 import pandas as pd
 import numpy as np
 from dateutil.relativedelta import relativedelta
+
+# ---------------------------------------------------------------------------
+# All Date columns / Timestamps must use a single resolution to avoid
+# pandas merge_asof dtype-mismatch errors across versions.  We standardise
+# on nanosecond resolution (datetime64[ns]) everywhere.
+# ---------------------------------------------------------------------------
+_NS_DTYPE = "datetime64[ns]"
+
+def _ensure_date_ns(df):
+    """Cast the 'Date' column of *df* to datetime64[ns] **in-place** and return df."""
+    if "Date" in df.columns:
+        df["Date"] = df["Date"].astype(_NS_DTYPE)
+    return df
+
+def _ts(val):
+    """Return a pd.Timestamp guaranteed to be nanosecond resolution."""
+    return pd.Timestamp(val).as_unit("ns")
 # import math
 # import copy
 
@@ -256,7 +273,7 @@ def generate_pseudo_nav(start_date, end_date, rate_of_return):
         'Date': date_range,
         'nav': nav_values
     })
-    return pseudo_nav_df
+    return _ensure_date_ns(pseudo_nav_df)
 
 # --- Core Calculation Functions ---
 
@@ -274,8 +291,8 @@ def calculate_goal_cashflows(input_df, end_date, goal_value_post_tax, instrument
         lambda x: end_date - relativedelta(years=int(x)) if pd.notna(x) else pd.NaT
     )
 
-    df['inflow_date'] = pd.to_datetime(df['inflow_date'])
-    df['outflow_date'] = pd.to_datetime(df['outflow_date'])
+    df['inflow_date'] = df['inflow_date'].astype(_NS_DTYPE)
+    df['outflow_date'] = pd.to_datetime(df['outflow_date']).astype(_NS_DTYPE)
 
     df[['inflow_date', 'outflow_date']] = df[['inflow_date', 'outflow_date']].mask(
         df[['inflow_date', 'outflow_date']] < current_date,
@@ -382,10 +399,10 @@ def calculate_sip_cashflows(input_variables, last_goal_date, retirement_date):
     
     end_date = max(last_goal_date, retirement_date)
     date_range = pd.date_range(start=current_date, end=end_date, freq='MS')
-    
-    df = pd.DataFrame({'Date': date_range})
+
+    df = _ensure_date_ns(pd.DataFrame({'Date': date_range}))
     sip_amounts = []
-    
+
     for i, date in enumerate(date_range):
         # Stop SIPs at retirement
         if date >= retirement_date:
@@ -450,7 +467,7 @@ def calculate_expenses_cashflows(input_variables, retirement_date, simulation_en
     
     # We need a master timeline to aggregate onto
     master_date_range = pd.date_range(start=current_date, end=simulation_end_date, freq='MS')
-    master_df = pd.DataFrame({'Date': master_date_range})
+    master_df = _ensure_date_ns(pd.DataFrame({'Date': master_date_range}))
     master_df['Expense Amount'] = 0.0
 
     for stream in streams:
@@ -500,7 +517,7 @@ def calculate_expenses_cashflows(input_variables, retirement_date, simulation_en
             stream_values.append(val)
             
         # Create DF for this stream
-        s_df = pd.DataFrame({'Date': stream_dates, 'Amount': stream_values})
+        s_df = _ensure_date_ns(pd.DataFrame({'Date': stream_dates, 'Amount': stream_values}))
         
         # Resample to Monthly (Summing) to match Master DF granularity
         # We align to Month Start for consistency with master
@@ -537,7 +554,7 @@ def calculate_passive_income_cashflows(config, retirement_date, simulation_end_d
         simulation_end_date = current_date + pd.DateOffset(years=100)
 
     master_date_range = pd.date_range(start=retirement_date, end=simulation_end_date, freq='MS')
-    master_df = pd.DataFrame({'Date': master_date_range})
+    master_df = _ensure_date_ns(pd.DataFrame({'Date': master_date_range}))
     master_df['Passive Income Amount'] = 0.0
 
     if not streams:
@@ -746,7 +763,7 @@ def get_default_glide_paths():
 
 def calculate_daily_value(final_trans_df, nav_df):
     trans_df = final_trans_df.copy(deep=True)
-    trans_df['Date'] = pd.to_datetime(trans_df['Date'])
+    trans_df['Date'] = trans_df['Date'].astype(_NS_DTYPE)
     trans_df = trans_df.sort_values('Date').reset_index(drop=True)
 
     trans_df = trans_df.groupby('Date', as_index=False)['units'].sum()
@@ -754,7 +771,7 @@ def calculate_daily_value(final_trans_df, nav_df):
     trans_df['cumulative_units'] = trans_df['units'].cumsum()
     units_df = trans_df[['Date', 'cumulative_units']]
 
-    units_df['Date'] = pd.to_datetime(units_df['Date'])
+    units_df['Date'] = units_df['Date'].astype(_NS_DTYPE)
     units_df = units_df.sort_values('Date')
     
     if units_df.empty:
@@ -922,21 +939,17 @@ def generate_comprehensive_view(config, final_trans_df, pool_trans_df, goal_dfs,
     # Let's use 'M' to be safe or 'D' and filter? 'M' is month end.
     
     # Create the master DF
-    master_df = pd.DataFrame({'Date': full_date_range})
-    master_df['Date'] = pd.to_datetime(master_df['Date'])
-
-    # Normalize NAV dates to avoid merge_asof dtype mismatches across pandas versions
-    nav_df = nav_df.copy(); nav_df['Date'] = pd.to_datetime(nav_df['Date'])
-    debt_nav_df = debt_nav_df.copy(); debt_nav_df['Date'] = pd.to_datetime(debt_nav_df['Date'])
-    hybrid_nav_df = hybrid_nav_df.copy(); hybrid_nav_df['Date'] = pd.to_datetime(hybrid_nav_df['Date'])
+    master_df = _ensure_date_ns(pd.DataFrame({'Date': full_date_range}))
 
     # 1. Core Corpus Value
     # Calculate daily units similar to calculate_daily_value but for just these dates?
     # Better: Calculate daily units series, then join.
     # We can reuse logic or just do it here efficiently.
-    
-    core_trans = final_trans_df.sort_values('Date')
-    core_daily_cats = pd.DataFrame({'Date': pd.date_range(start=current_date, end=end_date, freq='D')})
+
+    core_trans = final_trans_df.copy()
+    core_trans['Date'] = core_trans['Date'].astype(_NS_DTYPE)
+    core_trans = core_trans.sort_values('Date')
+    core_daily_cats = _ensure_date_ns(pd.DataFrame({'Date': pd.date_range(start=current_date, end=end_date, freq='D')}))
     
     # Agg transactions by day
     agg_trans = core_trans.groupby('Date')['units'].sum().reset_index()
@@ -958,16 +971,16 @@ def generate_comprehensive_view(config, final_trans_df, pool_trans_df, goal_dfs,
     if pool_trans_df is not None and not pool_trans_df.empty:
         # Separate by Pool
         # Ensure Date is datetime
-        pool_trans_df['Date'] = pd.to_datetime(pool_trans_df['Date'])
-        
+        pool_trans_df['Date'] = pool_trans_df['Date'].astype(_NS_DTYPE)
+
         for pool_name, nav_source in [('Debt', debt_nav_df), ('Hybrid', hybrid_nav_df)]:
             p_trans = pool_trans_df[pool_trans_df['Pool'] == pool_name].copy()
             if p_trans.empty:
                 master_df[f'Expense {pool_name} Pool Value'] = 0.0
                 continue
-                
+
             agg_p = p_trans.groupby('Date')['units'].sum().reset_index()
-            daily_p = pd.DataFrame({'Date': pd.date_range(start=current_date, end=end_date, freq='D')})
+            daily_p = _ensure_date_ns(pd.DataFrame({'Date': pd.date_range(start=current_date, end=end_date, freq='D')}))
             daily_p = daily_p.merge(agg_p, on='Date', how='left').fillna(0)
             daily_p['cum_units'] = daily_p['units'].cumsum()
             
@@ -1019,8 +1032,7 @@ def generate_comprehensive_view(config, final_trans_df, pool_trans_df, goal_dfs,
             
             # Get NAVs for these dates
             # merge
-            temp_df = pd.DataFrame({'Date': subset_dates})
-            temp_df['Date'] = pd.to_datetime(temp_df['Date'])
+            temp_df = _ensure_date_ns(pd.DataFrame({'Date': subset_dates}))
             temp_df = pd.merge_asof(temp_df, curr_nav_df, on='Date')
             
             # Add to master
