@@ -923,7 +923,13 @@ def generate_comprehensive_view(config, final_trans_df, pool_trans_df, goal_dfs,
     
     # Create the master DF
     master_df = pd.DataFrame({'Date': full_date_range})
-    
+    master_df['Date'] = pd.to_datetime(master_df['Date'])
+
+    # Normalize NAV dates to avoid merge_asof dtype mismatches across pandas versions
+    nav_df = nav_df.copy(); nav_df['Date'] = pd.to_datetime(nav_df['Date'])
+    debt_nav_df = debt_nav_df.copy(); debt_nav_df['Date'] = pd.to_datetime(debt_nav_df['Date'])
+    hybrid_nav_df = hybrid_nav_df.copy(); hybrid_nav_df['Date'] = pd.to_datetime(hybrid_nav_df['Date'])
+
     # 1. Core Corpus Value
     # Calculate daily units similar to calculate_daily_value but for just these dates?
     # Better: Calculate daily units series, then join.
@@ -1015,9 +1021,7 @@ def generate_comprehensive_view(config, final_trans_df, pool_trans_df, goal_dfs,
             # merge
             temp_df = pd.DataFrame({'Date': subset_dates})
             temp_df['Date'] = pd.to_datetime(temp_df['Date'])
-            nav_for_merge = curr_nav_df.copy()
-            nav_for_merge['Date'] = pd.to_datetime(nav_for_merge['Date'])
-            temp_df = pd.merge_asof(temp_df, nav_for_merge, on='Date')
+            temp_df = pd.merge_asof(temp_df, curr_nav_df, on='Date')
             
             # Add to master
             # We map back by index or Date
