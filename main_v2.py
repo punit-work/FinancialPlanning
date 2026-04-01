@@ -1014,7 +1014,10 @@ def generate_comprehensive_view(config, final_trans_df, pool_trans_df, goal_dfs,
             # Get NAVs for these dates
             # merge
             temp_df = pd.DataFrame({'Date': subset_dates})
-            temp_df = pd.merge_asof(temp_df, curr_nav_df, on='Date')
+            temp_df['Date'] = pd.to_datetime(temp_df['Date'])
+            nav_for_merge = curr_nav_df.copy()
+            nav_for_merge['Date'] = pd.to_datetime(nav_for_merge['Date'])
+            temp_df = pd.merge_asof(temp_df, nav_for_merge, on='Date')
             
             # Add to master
             # We map back by index or Date
