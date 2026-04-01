@@ -1,5 +1,5 @@
 streamlit
-pandas
+pandas>=3.0.0
 numpy
 python-dateutil
 openpyxl
