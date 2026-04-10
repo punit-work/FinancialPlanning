@@ -631,6 +631,10 @@ def create_sip_trans(nav_df, sip_df, input_variables, retirement_date):
 
 def add_withdrawls_to_trans(sip_trans_df, withdrawls_df, nav_df, instrument_params):
     updated_trans_df = sip_trans_df.copy(deep=True)
+    # Ensure numeric columns are float to avoid dtype upcast errors on partial updates
+    for col in ['Amount', 'units', 'NAV']:
+        if col in updated_trans_df.columns:
+            updated_trans_df[col] = updated_trans_df[col].astype(float)
     withdrawal_transactions = []
     
     # Combine withdrawals from goals and post-retirement expenses
