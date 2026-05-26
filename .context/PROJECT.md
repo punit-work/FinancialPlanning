@@ -24,10 +24,11 @@ The answer is delivered through `find_retirement_date()` and rendered in the Str
 
 - Glide paths refreshed today: tranche restructure across all three goal types. See `GLIDE_PATHS_CHANGELOG.md` for the row-level diff.
 - Tax model: STCG 20%, LTCG 12.5% for all equity-like buckets (core_corpus / equity / debt / hybrid / cash all share the same STCG/LTCG split — the differentiator is the return assumption).
-- Default return assumptions (`find_retirement_date()` defaults):
-  - core_corpus / equity / hybrid: **12%** annual
-  - debt: **8%** annual
-  - cash: **4%** annual
+- Default return assumptions (`find_retirement_date()` defaults, aligned with the Streamlit UI prefill on 2026-05-21):
+  - core_corpus / equity: **12%** annual
+  - hybrid: **10%** annual
+  - debt: **6%** annual
+  - cash: **4%** annual (UI does not expose; code only)
 - Default `target_lifetime = 90` (changed from 100 in commit `444476f`-era).
 
 ## Key concepts (quick reference — full model in SIMULATION_MODEL.md)

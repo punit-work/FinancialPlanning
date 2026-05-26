@@ -1301,8 +1301,8 @@ def find_retirement_date(config, instrument_params=None, glide_paths=None):
         instrument_params = {
             'core_corpus': {'return': 0.12, 'stcg_tax': 0.20, 'ltcg_tax': 0.125},
             'equity': {'return': 0.12, 'stcg_tax': 0.20, 'ltcg_tax': 0.125},
-            'debt': {'return': 0.08, 'stcg_tax': 0.20, 'ltcg_tax': 0.125},
-            'hybrid': {'return': 0.12, 'stcg_tax': 0.20, 'ltcg_tax': 0.125},
+            'debt': {'return': 0.06, 'stcg_tax': 0.20, 'ltcg_tax': 0.125},
+            'hybrid': {'return': 0.10, 'stcg_tax': 0.20, 'ltcg_tax': 0.125},
             'cash': {'return': 0.04, 'stcg_tax': 0.20, 'ltcg_tax': 0.125}
         }
 

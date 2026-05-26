@@ -6,6 +6,26 @@ This file is seeded from the commit history that's actually in the repo today (2
 
 ---
 
+## 2026-05-21 — UI and code defaults aligned for hybrid (12→10%) and debt (8→6%)
+
+The Streamlit UI's "Configure Instrument Returns and Taxes" expander had been carrying different prefill values than the `find_retirement_date()` defaults in `main_v2.py:1300-1307`. Aligned in this direction: **UI is the source of truth** (the user interacts with it daily and just lowered the hybrid prefill to 10%), so `main_v2.py` code defaults were updated to match.
+
+Aligned values (both UI prefill and code default):
+- `hybrid` return: 10% (was 12% in code, 12% in UI before today's change)
+- `debt` return: 6% (was 8% in code, 6% in UI — silent drift)
+- `core_corpus` return: 12% (already matched)
+- All STCG/LTCG: 20% / 12.5% (already matched)
+
+`equity` (12%) and `cash` (4%) are still code-only; the UI does not surface them, so they're unchanged.
+
+**Why:** silent drift between UI prefill and code default means a user running through Streamlit gets a different baseline than a developer running `python main_v2.py`. Worse, the `find_retirement_date()` defaults double as the smoke-test baseline — if they say 12% hybrid while the UI says 10%, the smoke test isn't checking what the user actually sees.
+
+**Trade-off:** any future change to a UI prefill should be mirrored in `main_v2.py:1300-1307` (and vice versa). If the two should ever intentionally diverge, log the reason here.
+
+**When to revisit:** if return assumptions change (e.g. revised debt-fund yields), update both sides together and log here.
+
+---
+
 ## 2026-05-21 — Glide paths stay in tranche-and-chain format, not target-allocation
 
 When updating from `Glide Paths v2.xlsx`, we re-authored the new glide path values into the existing tranche-and-chain row format rather than rewriting `calculate_goal_cashflows()` to consume a target-allocation table.
