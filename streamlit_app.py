@@ -631,7 +631,7 @@ def main():
 
         with col1:
             st.subheader("Hybrid")
-            hybrid_return = st.number_input("Return (%)", value=12.0, step=0.1, key="hybrid_return")
+            hybrid_return = st.number_input("Return (%)", value=10.0, step=0.1, key="hybrid_return")
             hybrid_stcg_tax = st.number_input("STCG Tax ≤12m (%)", value=20.0, step=0.1, key="hybrid_stcg_tax")
             hybrid_ltcg_tax = st.number_input("LTCG Tax >12m (%)", value=12.5, step=0.1, key="hybrid_ltcg_tax")
 
